@@ -1,208 +1,117 @@
-import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView, Alert, RefreshControl } from 'react-native';
-import { Text, Card, Button, Input, Overlay } from 'react-native-elements';
-import { getUserCars, addCar, updateCar, deleteCar } from '../services/api';
-import { Car } from '../types';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, ScrollView, RefreshControl, Alert, ActivityIndicator } from 'react-native';
+import { Text, Card, Button, Icon, ListItem, Avatar } from '@rneui/themed';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { RootStackParamList } from '../navigation/AppNavigator';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Car } from '../types/car';
+import { getProfile } from '../services/api';
+
+type CarsScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Cars'>;
 
 const CarsScreen = () => {
     const [cars, setCars] = useState<Car[]>([]);
+    const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [visible, setVisible] = useState(false);
-    const [editingCar, setEditingCar] = useState<Car | null>(null);
-    const [brand, setBrand] = useState('');
-    const [model, setModel] = useState('');
-    const [year, setYear] = useState('');
-    const [licensePlate, setLicensePlate] = useState('');
+    const navigation = useNavigation<CarsScreenNavigationProp>();
 
-    const loadCars = async () => {
+    const loadData = async () => {
         try {
-            const userCars = await getUserCars();
-            setCars(userCars);
+            setLoading(true);
+            console.log("Autó adatok betöltése...");
+            
+            // Profil lekérése, mely tartalmazza az autó adatokat
+            const profileData = await getProfile();
+            console.log("Profil adat:", profileData);
+            
+            if (profileData && profileData.cars) {
+                setCars(profileData.cars);
+                console.log("Autók betöltve:", profileData.cars.length);
+            } else {
+                console.log("Nincsenek betölthető autók");
+                setCars([]);
+            }
         } catch (error) {
-            console.error('Error loading cars:', error);
+            console.error('Hiba az autó adatok betöltése során:', error);
+            Alert.alert('Hiba', 'Nem sikerült betölteni az autó adatokat.');
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
         }
     };
 
     const onRefresh = async () => {
         setRefreshing(true);
-        await loadCars();
-        setRefreshing(false);
+        await loadData();
     };
 
     useEffect(() => {
-        loadCars();
+        loadData();
     }, []);
-
-    const handleAddCar = async () => {
-        if (!brand || !model || !year || !licensePlate) {
-            Alert.alert('Hiba', 'Kérjük, töltse ki az összes mezőt!');
-            return;
-        }
-
-        try {
-            await addCar({
-                brand,
-                model,
-                year: parseInt(year),
-                licensePlate,
-                isParked: false,
-            });
-            setVisible(false);
-            resetForm();
-            loadCars();
-        } catch (error) {
-            Alert.alert('Hiba', 'Nem sikerült hozzáadni az autót!');
-        }
-    };
-
-    const handleEditCar = async () => {
-        if (!editingCar || !brand || !model || !year || !licensePlate) {
-            Alert.alert('Hiba', 'Kérjük, töltse ki az összes mezőt!');
-            return;
-        }
-
-        try {
-            await updateCar(editingCar.id, {
-                brand,
-                model,
-                year: parseInt(year),
-                licensePlate,
-            });
-            setVisible(false);
-            resetForm();
-            loadCars();
-        } catch (error) {
-            Alert.alert('Hiba', 'Nem sikerült módosítani az autót!');
-        }
-    };
-
-    const handleDeleteCar = async (carId: number) => {
-        Alert.alert(
-            'Autó törlése',
-            'Biztosan törölni szeretné ezt az autót?',
-            [
-                { text: 'Mégse', style: 'cancel' },
-                {
-                    text: 'Törlés',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            await deleteCar(carId);
-                            loadCars();
-                        } catch (error) {
-                            Alert.alert('Hiba', 'Nem sikerült törölni az autót!');
-                        }
-                    },
-                },
-            ]
-        );
-    };
-
-    const resetForm = () => {
-        setBrand('');
-        setModel('');
-        setYear('');
-        setLicensePlate('');
-        setEditingCar(null);
-    };
-
-    const openAddModal = () => {
-        resetForm();
-        setVisible(true);
-    };
-
-    const openEditModal = (car: Car) => {
-        setEditingCar(car);
-        setBrand(car.brand);
-        setModel(car.model);
-        setYear(car.year.toString());
-        setLicensePlate(car.licensePlate);
-        setVisible(true);
-    };
 
     return (
         <View style={styles.container}>
-            <ScrollView
-                refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-                }
-            >
-                <Button
-                    title="Új autó hozzáadása"
-                    onPress={openAddModal}
-                    containerStyle={styles.addButton}
-                />
-                {cars.map((car) => (
-                    <Card key={car.id} containerStyle={styles.card}>
-                        <Text style={styles.carTitle}>
-                            {car.brand} {car.model}
-                        </Text>
-                        <Text style={styles.carDetails}>Rendszám: {car.licensePlate}</Text>
-                        <Text style={styles.carDetails}>Évjárat: {car.year}</Text>
-                        <Text style={styles.carDetails}>
-                            Állapot: {car.isParked ? 'Parkolva' : 'Szabad'}
-                        </Text>
-                        <View style={styles.buttonContainer}>
-                            <Button
-                                title="Szerkesztés"
-                                type="outline"
-                                onPress={() => openEditModal(car)}
-                                containerStyle={styles.button}
-                            />
-                            <Button
-                                title="Törlés"
-                                type="outline"
-                                buttonStyle={styles.deleteButton}
-                                titleStyle={styles.deleteButtonText}
-                                onPress={() => handleDeleteCar(car.id)}
-                                containerStyle={styles.button}
-                            />
-                        </View>
-                    </Card>
-                ))}
-            </ScrollView>
-
-            <Overlay isVisible={visible} onBackdropPress={() => setVisible(false)}>
-                <View style={styles.modalContainer}>
-                    <Text h4 style={styles.modalTitle}>
-                        {editingCar ? 'Autó szerkesztése' : 'Új autó hozzáadása'}
-                    </Text>
-                    <Input
-                        placeholder="Márka"
-                        value={brand}
-                        onChangeText={setBrand}
-                    />
-                    <Input
-                        placeholder="Modell"
-                        value={model}
-                        onChangeText={setModel}
-                    />
-                    <Input
-                        placeholder="Évjárat"
-                        value={year}
-                        onChangeText={setYear}
-                        keyboardType="numeric"
-                    />
-                    <Input
-                        placeholder="Rendszám"
-                        value={licensePlate}
-                        onChangeText={setLicensePlate}
-                    />
-                    <View style={styles.modalButtons}>
-                        <Button
-                            title="Mégse"
-                            type="outline"
-                            onPress={() => setVisible(false)}
-                            containerStyle={styles.modalButton}
-                        />
-                        <Button
-                            title={editingCar ? 'Mentés' : 'Hozzáadás'}
-                            onPress={editingCar ? handleEditCar : handleAddCar}
-                            containerStyle={styles.modalButton}
-                        />
-                    </View>
+            {loading && !refreshing ? (
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color="#2089dc" />
+                    <Text style={styles.loadingText}>Autók betöltése...</Text>
                 </View>
-            </Overlay>
+            ) : (
+                <ScrollView
+                    refreshControl={
+                        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+                    }
+                >
+                    <Card containerStyle={styles.card}>
+                        <Card.Title>Az Ön autói</Card.Title>
+                        <Card.Divider />
+                        
+                        {cars.length > 0 ? (
+                            cars.map((car, index) => (
+                                <ListItem key={index} bottomDivider>
+                                    <Avatar
+                                        rounded
+                                        icon={{name: 'directions-car', type: 'material'}}
+                                        containerStyle={{backgroundColor: '#2089dc'}}
+                                    />
+                                    <ListItem.Content>
+                                        <ListItem.Title>{car.brand} {car.model}</ListItem.Title>
+                                        <ListItem.Subtitle>Rendszám: {car.licensePlate}</ListItem.Subtitle>
+                                        {car.year && (
+                                            <Text>Évjárat: {car.year}</Text>
+                                        )}
+                                        <Text style={car.isParked ? styles.parkedText : styles.notParkedText}>
+                                            {car.isParked ? 'Leparkolt' : 'Nincs leparkolva'}
+                                        </Text>
+                                    </ListItem.Content>
+                                    <Button
+                                        icon={<Icon name="edit" size={20} color="white" />}
+                                        buttonStyle={styles.editButton}
+                                        onPress={() => Alert.alert('Információ', 'Szerkesztés funkció hamarosan érkezik!')}
+                                    />
+                                </ListItem>
+                            ))
+                        ) : (
+                            <Text style={styles.emptyText}>Jelenleg nincs regisztrált autója.</Text>
+                        )}
+                    </Card>
+                    
+                    <Button
+                        title="Új autó hozzáadása"
+                        icon={<Icon name="add" color="white" style={styles.buttonIcon} />}
+                        containerStyle={styles.addButton}
+                        onPress={() => Alert.alert('Információ', 'Új autó hozzáadása funkció hamarosan érkezik!')}
+                    />
+                    
+                    <Button
+                        title="Vissza a főoldalra"
+                        type="outline"
+                        containerStyle={styles.backButton}
+                        onPress={() => navigation.goBack()}
+                    />
+                </ScrollView>
+            )}
         </View>
     );
 };
@@ -212,55 +121,46 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#f5f5f5',
     },
-    addButton: {
-        margin: 15,
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    loadingText: {
+        marginTop: 10,
+        fontSize: 16,
     },
     card: {
         borderRadius: 10,
-        marginBottom: 10,
-        marginHorizontal: 15,
+        marginBottom: 15,
     },
-    carTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        marginBottom: 5,
-    },
-    carDetails: {
-        fontSize: 14,
-        color: '#666',
-        marginBottom: 3,
-    },
-    buttonContainer: {
-        flexDirection: 'row',
-        justifyContent: 'space-around',
-        marginTop: 10,
-    },
-    button: {
-        flex: 1,
-        marginHorizontal: 5,
-    },
-    deleteButton: {
-        borderColor: 'red',
-    },
-    deleteButtonText: {
-        color: 'red',
-    },
-    modalContainer: {
-        width: 300,
+    emptyText: {
+        textAlign: 'center',
+        fontSize: 16,
         padding: 20,
     },
-    modalTitle: {
-        textAlign: 'center',
-        marginBottom: 20,
+    buttonIcon: {
+        marginRight: 10,
     },
-    modalButtons: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginTop: 20,
+    parkedText: {
+        color: 'green',
+        fontWeight: 'bold',
     },
-    modalButton: {
-        flex: 1,
-        marginHorizontal: 5,
+    notParkedText: {
+        color: 'gray',
+    },
+    editButton: {
+        backgroundColor: '#2089dc',
+        borderRadius: 5,
+    },
+    addButton: {
+        marginHorizontal: 30,
+        marginVertical: 10,
+    },
+    backButton: {
+        marginHorizontal: 30,
+        marginTop: 5,
+        marginBottom: 30,
     },
 });
 

@@ -1,238 +1,273 @@
-import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView, Alert, RefreshControl } from 'react-native';
-import { Text, Card, Button, Overlay } from 'react-native-elements';
-import {
-    getAvailableSpots,
-    getUserCars,
-    startParking,
-    endParking,
-    getParkingStatus,
-} from '../services/api';
-import { Car, ParkingSpot } from '../types';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, Alert, ScrollView, ActivityIndicator } from 'react-native';
+import { Button, Card, Input } from '@rneui/themed';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { parkCar, getMyCars } from '../services/api';
+import { RootStackParamList } from '../navigation/AppNavigator';
+import { Car } from '../types';
+import { EventRegister } from 'react-native-event-listeners';
+
+// Definiáljuk az eseményt a parkolás frissítéséhez
+export const PARKING_START_EVENT = 'parking_start_event';
+
+type ParkingScreenRouteProp = RouteProp<RootStackParamList, 'Parking'>;
 
 const ParkingScreen = () => {
-    const [availableSpots, setAvailableSpots] = useState<ParkingSpot[]>([]);
-    const [userCars, setUserCars] = useState<Car[]>([]);
-    const [refreshing, setRefreshing] = useState(false);
-    const [selectedCar, setSelectedCar] = useState<Car | null>(null);
-    const [selectedSpot, setSelectedSpot] = useState<ParkingSpot | null>(null);
-    const [showCarModal, setShowCarModal] = useState(false);
-    const [showSpotModal, setShowSpotModal] = useState(false);
+  const navigation = useNavigation();
+  const route = useRoute<ParkingScreenRouteProp>();
+  const selectedSpot = route.params?.selectedSpot;
 
-    const loadData = async () => {
-        try {
-            const [spots, cars] = await Promise.all([
-                getAvailableSpots(),
-                getUserCars(),
-            ]);
-            setAvailableSpots(spots);
-            setUserCars(cars);
-        } catch (error) {
-            console.error('Error loading parking data:', error);
-        }
-    };
+  const [loading, setLoading] = useState(false);
+  const [cars, setCars] = useState<Car[]>([]);
+  const [selectedCar, setSelectedCar] = useState<string | null>(null);
+  const [loadingCars, setLoadingCars] = useState(true);
 
-    const onRefresh = async () => {
-        setRefreshing(true);
-        await loadData();
-        setRefreshing(false);
-    };
+  useEffect(() => {
+    if (!selectedSpot) {
+      Alert.alert('Hiba', 'Nincs kiválasztott parkolóhely. Kérjük, válasszon egy parkolóhelyet.');
+      navigation.navigate('ParkingSpots' as never);
+      return;
+    }
+    loadMyCars();
+  }, []);
 
-    useEffect(() => {
-        loadData();
-    }, []);
+  const loadMyCars = async () => {
+    try {
+      setLoadingCars(true);
+      const myCars = await getMyCars();
+      
+      // Csak azokat az autókat mutatjuk, amelyek nincsenek parkolóban
+      const availableCars = myCars.filter(car => !car.isParked);
+      
+      setCars(availableCars);
+      
+      if (availableCars.length > 0) {
+        setSelectedCar(availableCars[0].id);
+      }
+      
+    } catch (error) {
+      console.error('Hiba az autók betöltésekor:', error);
+      Alert.alert('Hiba', 'Nem sikerült betölteni az autókat. Kérjük, próbáld újra később.');
+    } finally {
+      setLoadingCars(false);
+    }
+  };
 
-    const handleStartParking = async () => {
-        if (!selectedCar || !selectedSpot) {
-            Alert.alert('Hiba', 'Kérjük, válasszon autót és parkolóhelyet!');
-            return;
-        }
+  const handlePark = async () => {
+    if (!selectedCar) {
+      Alert.alert('Figyelmeztetés', 'Kérjük, válassz ki egy autót a parkoláshoz.');
+      return;
+    }
 
-        try {
-            await startParking(selectedCar.id, selectedSpot.id);
-            Alert.alert('Sikeres', 'Az autó sikeresen le lett parkolva!');
-            setShowCarModal(false);
-            setShowSpotModal(false);
-            loadData();
-        } catch (error) {
-            Alert.alert('Hiba', 'Nem sikerült leparkolni az autót!');
-        }
-    };
+    try {
+      setLoading(true);
+      
+      const result = await parkCar({
+        carId: selectedCar,
+        parkingSpotId: selectedSpot.id
+      });
+      
+      // Küldjünk frissítési eseményt a Dashboard számára
+      console.log('Parkolás sikeres, frissítési esemény kiküldése');
+      EventRegister.emit(PARKING_START_EVENT, { success: true });
+      
+      Alert.alert(
+        'Sikeres parkolás',
+        `A parkolás sikeresen megtörtént. Parkolási hely: ${selectedSpot.floorNumber}. emelet, ${selectedSpot.spotNumber}. hely.`,
+        [
+          { 
+            text: 'OK', 
+            onPress: () => navigation.navigate('Dashboard' as never) 
+          }
+        ]
+      );
+      
+    } catch (error) {
+      console.error('Hiba a parkolás során:', error);
+      Alert.alert('Hiba', 'Nem sikerült végrehajtani a parkolást. Kérjük, próbáld újra később.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const handleEndParking = async (car: Car) => {
-        try {
-            await endParking(car.id);
-            Alert.alert('Sikeres', 'A parkolás sikeresen befejeződött!');
-            loadData();
-        } catch (error) {
-            Alert.alert('Hiba', 'Nem sikerült befejezni a parkolást!');
-        }
-    };
-
-    const openCarSelection = (spot: ParkingSpot) => {
-        setSelectedSpot(spot);
-        setShowCarModal(true);
-    };
-
-    const openSpotSelection = (car: Car) => {
-        setSelectedCar(car);
-        setShowSpotModal(true);
-    };
-
+  if (loadingCars) {
     return (
-        <View style={styles.container}>
-            <ScrollView
-                refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-                }
-            >
-                <Text h4 style={styles.sectionTitle}>
-                    Parkolóhelyek
-                </Text>
-                {availableSpots.map((spot) => (
-                    <Card key={spot.id} containerStyle={styles.card}>
-                        <Text style={styles.spotTitle}>
-                            {spot.floorNumber}. emelet - {spot.spotNumber}. hely
-                        </Text>
-                        <Button
-                            title="Parkolás kezdése"
-                            onPress={() => openCarSelection(spot)}
-                            containerStyle={styles.buttonContainer}
-                        />
-                    </Card>
-                ))}
-
-                <Text h4 style={styles.sectionTitle}>
-                    Parkolt autók
-                </Text>
-                {userCars
-                    .filter((car) => car.isParked)
-                    .map((car) => (
-                        <Card key={car.id} containerStyle={styles.card}>
-                            <Text style={styles.carTitle}>
-                                {car.brand} {car.model}
-                            </Text>
-                            <Text style={styles.carDetails}>
-                                Rendszám: {car.licensePlate}
-                            </Text>
-                            <Button
-                                title="Parkolás befejezése"
-                                onPress={() => handleEndParking(car)}
-                                buttonStyle={styles.endButton}
-                                containerStyle={styles.buttonContainer}
-                            />
-                        </Card>
-                    ))}
-            </ScrollView>
-
-            <Overlay
-                isVisible={showCarModal}
-                onBackdropPress={() => setShowCarModal(false)}
-            >
-                <View style={styles.modalContainer}>
-                    <Text h4 style={styles.modalTitle}>
-                        Válassz autót
-                    </Text>
-                    {userCars
-                        .filter((car) => !car.isParked)
-                        .map((car) => (
-                            <Button
-                                key={car.id}
-                                title={`${car.brand} ${car.model} - ${car.licensePlate}`}
-                                onPress={() => {
-                                    setSelectedCar(car);
-                                    setShowCarModal(false);
-                                    setShowSpotModal(true);
-                                }}
-                                containerStyle={styles.modalButton}
-                            />
-                        ))}
-                    <Button
-                        title="Mégse"
-                        type="outline"
-                        onPress={() => setShowCarModal(false)}
-                        containerStyle={styles.modalButton}
-                    />
-                </View>
-            </Overlay>
-
-            <Overlay
-                isVisible={showSpotModal}
-                onBackdropPress={() => setShowSpotModal(false)}
-            >
-                <View style={styles.modalContainer}>
-                    <Text h4 style={styles.modalTitle}>
-                        Válassz parkolóhelyet
-                    </Text>
-                    {availableSpots.map((spot) => (
-                        <Button
-                            key={spot.id}
-                            title={`${spot.floorNumber}. emelet - ${spot.spotNumber}. hely`}
-                            onPress={() => {
-                                setSelectedSpot(spot);
-                                handleStartParking();
-                            }}
-                            containerStyle={styles.modalButton}
-                        />
-                    ))}
-                    <Button
-                        title="Mégse"
-                        type="outline"
-                        onPress={() => setShowSpotModal(false)}
-                        containerStyle={styles.modalButton}
-                    />
-                </View>
-            </Overlay>
-        </View>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#2089dc" />
+        <Text style={styles.loadingText}>Autók betöltése...</Text>
+      </View>
     );
+  }
+
+  return (
+    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      <Text style={styles.title}>Parkolás</Text>
+      
+      <Card containerStyle={styles.card}>
+        <Card.Title>Parkolóhely információk</Card.Title>
+        <Card.Divider />
+        
+        {selectedSpot ? (
+          <>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Emelet:</Text>
+              <Text style={styles.infoValue}>{selectedSpot.floorNumber}. emelet</Text>
+            </View>
+            
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Hely száma:</Text>
+              <Text style={styles.infoValue}>{selectedSpot.spotNumber}</Text>
+            </View>
+            
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Állapot:</Text>
+              <Text style={[
+                styles.infoValue, 
+                { color: (selectedSpot.isAvailable || !selectedSpot.isOccupied) ? 'green' : 'red' }
+              ]}>
+                {(selectedSpot.isAvailable || !selectedSpot.isOccupied) ? 'Szabad' : 'Foglalt'}
+              </Text>
+            </View>
+          </>
+        ) : (
+          <Text style={styles.noDataText}>Nincs kiválasztott parkolóhely</Text>
+        )}
+      </Card>
+      
+      <Card containerStyle={styles.card}>
+        <Card.Title>Válassz autót</Card.Title>
+        <Card.Divider />
+        
+        {cars.length === 0 ? (
+          <View style={styles.noCarContainer}>
+            <Text style={styles.noCarText}>Nincs elérhető autó a parkoláshoz</Text>
+            <Button
+              title="Új autó hozzáadása"
+              buttonStyle={styles.addCarButton}
+              onPress={() => navigation.navigate('Cars' as never)}
+              containerStyle={styles.buttonContainer}
+            />
+          </View>
+        ) : (
+          <View>
+            {cars.map(car => (
+              <Button
+                key={car.id}
+                title={`${car.brand} ${car.model} (${car.licensePlate})`}
+                buttonStyle={[
+                  styles.carButton,
+                  selectedCar === car.id ? styles.selectedCarButton : null
+                ]}
+                titleStyle={
+                  selectedCar === car.id ? styles.selectedCarButtonText : null
+                }
+                onPress={() => setSelectedCar(car.id)}
+                type={selectedCar === car.id ? "solid" : "outline"}
+                containerStyle={styles.buttonContainer}
+              />
+            ))}
+          </View>
+        )}
+      </Card>
+      
+      <View style={styles.buttonGroup}>
+        <Button
+          title="Vissza"
+          type="outline"
+          onPress={() => navigation.goBack()}
+          containerStyle={[styles.buttonContainer, { flex: 1, marginRight: 8 }]}
+        />
+        
+        <Button
+          title={loading ? "Feldolgozás..." : "Parkolás indítása"}
+          onPress={handlePark}
+          disabled={loading || cars.length === 0}
+          containerStyle={[styles.buttonContainer, { flex: 2 }]}
+          disabledStyle={{ backgroundColor: '#cccccc' }}
+        />
+      </View>
+    </ScrollView>
+  );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#f5f5f5',
-    },
-    sectionTitle: {
-        margin: 15,
-        color: '#333',
-    },
-    card: {
-        borderRadius: 10,
-        marginBottom: 10,
-        marginHorizontal: 15,
-    },
-    spotTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        marginBottom: 10,
-    },
-    carTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        marginBottom: 5,
-    },
-    carDetails: {
-        fontSize: 14,
-        color: '#666',
-        marginBottom: 10,
-    },
-    buttonContainer: {
-        marginTop: 10,
-    },
-    endButton: {
-        backgroundColor: '#dc3545',
-    },
-    modalContainer: {
-        width: 300,
-        padding: 20,
-    },
-    modalTitle: {
-        textAlign: 'center',
-        marginBottom: 20,
-    },
-    modalButton: {
-        marginBottom: 10,
-    },
+  container: {
+    flex: 1,
+    backgroundColor: '#f9f9f9',
+  },
+  contentContainer: {
+    padding: 16,
+    paddingBottom: 30,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  card: {
+    borderRadius: 8,
+    marginBottom: 16,
+    padding: 16,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  infoLabel: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#555',
+  },
+  infoValue: {
+    fontSize: 16,
+  },
+  carButton: {
+    paddingVertical: 12,
+    marginBottom: 8,
+  },
+  selectedCarButton: {
+    backgroundColor: '#2089dc',
+  },
+  selectedCarButtonText: {
+    color: 'white',
+  },
+  buttonContainer: {
+    marginVertical: 8,
+  },
+  buttonGroup: {
+    flexDirection: 'row',
+    marginTop: 16,
+  },
+  noCarContainer: {
+    alignItems: 'center',
+    padding: 16,
+  },
+  noCarText: {
+    fontSize: 16,
+    color: '#888',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  addCarButton: {
+    backgroundColor: '#2089dc',
+  },
+  noDataText: {
+    fontSize: 16,
+    color: '#888',
+    textAlign: 'center',
+  },
 });
 
 export default ParkingScreen; 

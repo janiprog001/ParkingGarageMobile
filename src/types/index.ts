@@ -1,64 +1,59 @@
 export interface User {
-    id: number;
-    firstName: string;
-    lastName: string;
+    id: string;
     email: string;
-    phoneNumber: string;
-    isAdmin: boolean;
-    cars: Car[];
-}
-
-export interface Car {
-    id: number;
-    brand: string;
-    model: string;
-    year: number;
-    licensePlate: string;
-    isParked: boolean;
-}
-
-export interface ParkingSpot {
-    id: number;
-    floorNumber: number;
-    spotNumber: number;
-    isOccupied: boolean;
-    carId: number | null;
-    startTime: string | null;
-    endTime: string | null;
-}
-
-export interface ParkingHistory {
-    id: number;
-    startTime: string;
-    endTime: string;
-    floorNumber: number;
-    spotNumber: number;
-    fee: number;
-    carId: number;
-    carBrand: string;
-    carModel: string;
-    licensePlate: string;
-    userId: number;
-    userName: string;
-    userEmail: string;
-}
-
-export interface Invoice {
-    id: number;
-    invoiceNumber: string;
-    userId: number;
-    parkingHistoryId: number;
-    amount: number;
-    issueDate: string;
-    dueDate: string;
-    status: string;
+    name: string;
+    role: 'user' | 'admin';
+    createdAt: string;
+    updatedAt: string;
 }
 
 export interface LoginResponse {
+    token: string;
+    user: User;
     message: string;
-    user: string;
-    userId: number;
-    isAdmin: boolean;
-    loginTime: string;
-    expiresAt: string;
+}
+
+export interface RegisterResponse {
+    message: string;
+    user: User;
+}
+
+export interface Car {
+    id: string;
+    brand: string;
+    model: string;
+    licensePlate: string;
+    userId: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface ParkingSpot {
+    id: string;
+    number: string;
+    isAvailable: boolean;
+    floor: number;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface ParkingHistory {
+    id: string;
+    carId: string;
+    spotId: string;
+    startTime: string;
+    endTime: string | null;
+    totalCost: number | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface Invoice {
+    id: string;
+    parkingHistoryId: string;
+    amount: number;
+    status: 'pending' | 'paid' | 'cancelled';
+    dueDate: string;
+    createdAt: string;
+    updatedAt: string;
 } 

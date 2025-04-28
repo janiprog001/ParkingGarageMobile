@@ -1,68 +1,83 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Alert } from 'react-native';
+import { View, StyleSheet, Alert, ToastAndroid } from 'react-native';
 import { Input, Button, Text } from '@rneui/themed';
+import { login } from '../../services/api';
 import { useNavigation } from '@react-navigation/native';
-import axios from 'axios';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { RootStackParamList } from '../../navigation/AppNavigator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { CommonActions } from '@react-navigation/native';
+import { EventRegister } from 'react-native-event-listeners';
+import { LOGIN_EVENT } from '../../navigation/AppNavigator';
+
+type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Login'>;
 
 const LoginScreen = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
-    const navigation = useNavigation();
+    const navigation = useNavigation<LoginScreenNavigationProp>();
+
+    const showToast = (message: string) => {
+        ToastAndroid.show(message, ToastAndroid.SHORT);
+    };
 
     const handleLogin = async () => {
         if (!email || !password) {
-            Alert.alert('Hiba', 'Kérjük, töltse ki az összes mezőt!');
+            Alert.alert('Hiba', 'Kérlek, add meg az email címed és jelszavad!');
             return;
         }
 
         setLoading(true);
         try {
-            const response = await axios.post('http://172.25.16.1:5025/api/users/login', {
-                email,
-                password,
+            showToast('Bejelentkezés folyamatban...');
+            console.log("Bejelentkezés megkezdve:", email);
+            
+            const response = await login(email, password);
+            console.log("Sikeres bejelentkezés:", response ? "válasz érkezett" : "nincs válasz");
+            
+            // Ellenőrizzük a bejelentkezési adatokat
+            const storedToken = await AsyncStorage.getItem('token');
+            const storedUser = await AsyncStorage.getItem('user');
+            
+            console.log("Tárolt token:", storedToken ? "létezik" : "hiányzik");
+            console.log("Tárolt felhasználó:", storedUser ? "létezik" : "hiányzik");
+            
+            if (!storedToken || !storedUser) {
+                showToast('Hiányzó bejelentkezési adatok!');
+                throw new Error('Hiányzó bejelentkezési adatok');
+            }
+            
+            showToast('Sikeres bejelentkezés');
+            
+            // Esemény kiküldése a navigációs rendszernek
+            console.log("Login esemény kiküldése");
+            EventRegister.emit(LOGIN_EVENT, {
+                success: true,
+                user: JSON.parse(storedUser)
             });
-
-            if (response.status === 200 && response.data) {
-                await AsyncStorage.setItem('userData', JSON.stringify(response.data));
-                await AsyncStorage.setItem('isLoggedIn', 'true');
-
-                Alert.alert('Sikeres bejelentkezés', 'Üdvözöljük!', [
-                    {
-                        text: 'OK',
-                        onPress: () => navigation.navigate('Dashboard'),
-                    },
-                ]);
-            } else {
-                Alert.alert('Hiba', 'Ismeretlen hiba történt a bejelentkezés során.');
-            }
+            
+            // Ne használjunk navigációt itt, az AppNavigator automatikusan frissül
+            console.log("Várakozás a navigáció frissítésére...");
+            
         } catch (error: any) {
-            let errorMessage = 'A bejelentkezés sikertelen. Kérjük, próbálja újra!';
-            if (error.response) {
-                console.error("Login Error Response:", error.response.data);
-                if (error.response.status === 401) {
-                    errorMessage = 'Hibás email cím vagy jelszó.';
-                } else {
-                    errorMessage = `Szerverhiba: ${error.response.status}`;
-                }
-            } else if (error.request) {
-                console.error("Login Error Request:", error.request);
-                errorMessage = 'Nem sikerült kapcsolatot létesíteni a szerverrel.';
-            } else {
-                console.error('Login Error Message:', error.message);
-                errorMessage = `Hiba történt: ${error.message}`;
-            }
-            Alert.alert('Hiba', errorMessage);
+            console.error("Bejelentkezési hiba:", error.message || "Ismeretlen hiba");
+            console.error("Hiba részletek:", error.response?.data || "Nincs részletes hibaüzenet");
+            
+            showToast('Bejelentkezési hiba');
+            
+            Alert.alert(
+                'Bejelentkezési hiba',
+                error.response?.data?.message || error.message || 'Hiba történt a bejelentkezés során.'
+            );
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <SafeAreaView style={styles.container}>
-            <Text h3 style={styles.title}>Parkológarázs</Text>
+        <View style={styles.container}>
+            <Text h3 style={styles.title}>Parkolóház</Text>
             <Text h4 style={styles.subtitle}>Bejelentkezés</Text>
 
             <Input
@@ -71,7 +86,8 @@ const LoginScreen = () => {
                 onChangeText={setEmail}
                 autoCapitalize="none"
                 keyboardType="email-address"
-                leftIcon={{ type: 'ionicon', name: 'mail-outline' }}
+                leftIcon={{ type: 'material', name: 'email' }}
+                containerStyle={styles.input}
             />
 
             <Input
@@ -79,7 +95,8 @@ const LoginScreen = () => {
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry
-                leftIcon={{ type: 'ionicon', name: 'lock-closed-outline' }}
+                leftIcon={{ type: 'material', name: 'lock' }}
+                containerStyle={styles.input}
             />
 
             <Button
@@ -94,7 +111,7 @@ const LoginScreen = () => {
                 type="clear"
                 onPress={() => navigation.navigate('Register')}
             />
-        </SafeAreaView>
+        </View>
     );
 };
 
@@ -114,6 +131,9 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         marginBottom: 30,
         color: '#666',
+    },
+    input: {
+        marginBottom: 10,
     },
     buttonContainer: {
         marginTop: 20,

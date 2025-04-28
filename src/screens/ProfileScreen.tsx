@@ -1,156 +1,109 @@
-import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView, Alert } from 'react-native';
-import { Text, Card, Button, Input } from 'react-native-elements';
-import { useNavigation } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getCurrentUser, updateUser, logout } from '../services/api';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, Alert, ScrollView } from 'react-native';
+import { Text, Input, Button, Card } from '@rneui/themed';
+import { getProfile, updateProfile, logout } from '../services/api';
 import { User } from '../types';
 
 const ProfileScreen = () => {
     const [user, setUser] = useState<User | null>(null);
-    const [isEditing, setIsEditing] = useState(false);
-    const [firstName, setFirstName] = useState('');
-    const [lastName, setLastName] = useState('');
-    const [email, setEmail] = useState('');
-    const [phoneNumber, setPhoneNumber] = useState('');
-    const [newPassword, setNewPassword] = useState('');
-    const navigation = useNavigation();
-
-    const loadUserData = async () => {
-        try {
-            const userData = await getCurrentUser();
-            setUser(userData);
-            setFirstName(userData.firstName);
-            setLastName(userData.lastName);
-            setEmail(userData.email);
-            setPhoneNumber(userData.phoneNumber);
-        } catch (error) {
-            console.error('Error loading user data:', error);
-        }
-    };
+    const [name, setName] = useState('');
+    const [loading, setLoading] = useState(false);
 
     useEffect(() => {
         loadUserData();
     }, []);
 
-    const handleUpdate = async () => {
-        if (!user) return;
-
+    const loadUserData = async () => {
         try {
-            await updateUser(user.id, {
-                firstName,
-                lastName,
-                email,
-                phoneNumber,
-                newPassword: newPassword || undefined,
-            });
-            Alert.alert('Sikeres', 'A profil sikeresen frissítve!');
-            setIsEditing(false);
-            setNewPassword('');
-            loadUserData();
+            const userData = await getProfile();
+            setUser(userData);
+            setName(userData.name);
         } catch (error) {
-            Alert.alert('Hiba', 'Nem sikerült frissíteni a profilt!');
+            console.error('Error loading user data:', error);
+            Alert.alert('Hiba', 'Nem sikerült betölteni a felhasználói adatokat.');
+        }
+    };
+
+    const handleUpdateProfile = async () => {
+        if (!name.trim()) {
+            Alert.alert('Hiba', 'A név nem lehet üres!');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const updatedUser = await updateProfile({ name });
+            setUser(updatedUser);
+            Alert.alert('Sikeres', 'A profil sikeresen frissítve!');
+        } catch (error: any) {
+            Alert.alert(
+                'Hiba',
+                error.response?.data?.message || 'Hiba történt a profil frissítése során.'
+            );
+        } finally {
+            setLoading(false);
         }
     };
 
     const handleLogout = async () => {
         try {
             await logout();
-            await AsyncStorage.removeItem('user');
-            navigation.navigate('Login' as never);
+            // A navigáció automatikusan megtörténik az AppNavigator-ban
         } catch (error) {
-            Alert.alert('Hiba', 'Nem sikerült kijelentkezni!');
+            console.error('Error during logout:', error);
+            Alert.alert('Hiba', 'Hiba történt a kijelentkezés során.');
         }
     };
-
-    if (!user) {
-        return (
-            <View style={styles.container}>
-                <Text>Betöltés...</Text>
-            </View>
-        );
-    }
 
     return (
         <ScrollView style={styles.container}>
             <Card containerStyle={styles.card}>
-                <Text h4 style={styles.cardTitle}>
-                    Profil adatok
-                </Text>
-                {isEditing ? (
-                    <>
-                        <Input
-                            placeholder="Keresztnév"
-                            value={firstName}
-                            onChangeText={setFirstName}
-                        />
-                        <Input
-                            placeholder="Vezetéknév"
-                            value={lastName}
-                            onChangeText={setLastName}
-                        />
-                        <Input
-                            placeholder="Email"
-                            value={email}
-                            onChangeText={setEmail}
-                            autoCapitalize="none"
-                            keyboardType="email-address"
-                        />
-                        <Input
-                            placeholder="Telefonszám"
-                            value={phoneNumber}
-                            onChangeText={setPhoneNumber}
-                            keyboardType="phone-pad"
-                        />
-                        <Input
-                            placeholder="Új jelszó (opcionális)"
-                            value={newPassword}
-                            onChangeText={setNewPassword}
-                            secureTextEntry
-                        />
-                        <View style={styles.buttonContainer}>
-                            <Button
-                                title="Mentés"
-                                onPress={handleUpdate}
-                                containerStyle={styles.button}
-                            />
-                            <Button
-                                title="Mégse"
-                                type="outline"
-                                onPress={() => {
-                                    setIsEditing(false);
-                                    setNewPassword('');
-                                    loadUserData();
-                                }}
-                                containerStyle={styles.button}
-                            />
-                        </View>
-                    </>
-                ) : (
-                    <>
-                        <Text style={styles.label}>Keresztnév:</Text>
-                        <Text style={styles.value}>{user.firstName}</Text>
-                        <Text style={styles.label}>Vezetéknév:</Text>
-                        <Text style={styles.value}>{user.lastName}</Text>
-                        <Text style={styles.label}>Email:</Text>
-                        <Text style={styles.value}>{user.email}</Text>
-                        <Text style={styles.label}>Telefonszám:</Text>
-                        <Text style={styles.value}>{user.phoneNumber}</Text>
-                        <Button
-                            title="Szerkesztés"
-                            onPress={() => setIsEditing(true)}
-                            containerStyle={styles.editButton}
-                        />
-                    </>
-                )}
+                <Card.Title>Profil adatok</Card.Title>
+                <Card.Divider />
+                
+                <Input
+                    label="Email cím"
+                    value={user?.email}
+                    disabled
+                    leftIcon={{ type: 'material', name: 'email' }}
+                />
+
+                <Input
+                    label="Név"
+                    value={name}
+                    onChangeText={setName}
+                    leftIcon={{ type: 'material', name: 'person' }}
+                />
+
+                <Button
+                    title="Profil frissítése"
+                    onPress={handleUpdateProfile}
+                    loading={loading}
+                    containerStyle={styles.buttonContainer}
+                />
             </Card>
 
-            <Button
-                title="Kijelentkezés"
-                onPress={handleLogout}
-                buttonStyle={styles.logoutButton}
-                containerStyle={styles.logoutContainer}
-            />
+            <Card containerStyle={styles.card}>
+                <Card.Title>Főkönyvtár</Card.Title>
+                <Card.Divider />
+                
+                <Text style={styles.infoText}>
+                    Regisztrált: {new Date(user?.createdAt || '').toLocaleDateString('hu-HU')}
+                </Text>
+                <Text style={styles.infoText}>
+                    Utoljára módosítva: {new Date(user?.updatedAt || '').toLocaleDateString('hu-HU')}
+                </Text>
+                <Text style={styles.infoText}>
+                    Szerepkör: {user?.role === 'admin' ? 'Adminisztrátor' : 'Felhasználó'}
+                </Text>
+
+                <Button
+                    title="Kijelentkezés"
+                    onPress={handleLogout}
+                    type="outline"
+                    containerStyle={styles.buttonContainer}
+                />
+            </Card>
         </ScrollView>
     );
 };
@@ -162,38 +115,15 @@ const styles = StyleSheet.create({
     },
     card: {
         borderRadius: 10,
-        margin: 15,
-    },
-    cardTitle: {
-        textAlign: 'center',
-        marginBottom: 20,
-    },
-    label: {
-        fontSize: 14,
-        color: '#666',
-        marginBottom: 5,
-    },
-    value: {
-        fontSize: 16,
         marginBottom: 15,
     },
     buttonContainer: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
         marginTop: 20,
     },
-    button: {
-        flex: 1,
-        marginHorizontal: 5,
-    },
-    editButton: {
-        marginTop: 20,
-    },
-    logoutButton: {
-        backgroundColor: '#dc3545',
-    },
-    logoutContainer: {
-        margin: 15,
+    infoText: {
+        fontSize: 16,
+        marginBottom: 10,
+        color: '#666',
     },
 });
 

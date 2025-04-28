@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, Alert } from 'react-native';
 import { Input, Button, Text } from '@rneui/themed';
+import { register } from '../../services/api';
 import { useNavigation } from '@react-navigation/native';
-import axios from 'axios';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { RootStackParamList } from '../../navigation/AppNavigator';
+
+type RegisterScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Register'>;
 
 const RegisterScreen = () => {
     const [name, setName] = useState('');
@@ -11,11 +14,11 @@ const RegisterScreen = () => {
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [loading, setLoading] = useState(false);
-    const navigation = useNavigation();
+    const navigation = useNavigation<RegisterScreenNavigationProp>();
 
     const handleRegister = async () => {
         if (!name || !email || !password || !confirmPassword) {
-            Alert.alert('Hiba', 'Kérjük, töltse ki az összes mezőt!');
+            Alert.alert('Hiba', 'Kérlek, töltsd ki az összes mezőt!');
             return;
         }
 
@@ -26,35 +29,33 @@ const RegisterScreen = () => {
 
         setLoading(true);
         try {
-            await axios.post('http://172.25.16.1:5025/api/users/register', {
-                name,
-                email,
-                password,
-            });
-
-            Alert.alert('Sikeres regisztráció', 'Most már bejelentkezhet!', [
-                {
-                    text: 'OK',
-                    onPress: () => navigation.navigate('Login'),
-                },
-            ]);
-        } catch (error) {
-            Alert.alert('Hiba', 'A regisztráció sikertelen. Kérjük, próbálja újra!');
+            await register(email, password, name);
+            Alert.alert(
+                'Sikeres regisztráció',
+                'Most már bejelentkezhetsz az új fiókodba.',
+                [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
+            );
+        } catch (error: any) {
+            Alert.alert(
+                'Regisztrációs hiba',
+                error.response?.data?.message || 'Hiba történt a regisztráció során.'
+            );
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <SafeAreaView style={styles.container}>
-            <Text h3 style={styles.title}>Parkológarázs</Text>
+        <View style={styles.container}>
+            <Text h3 style={styles.title}>Parkolóház</Text>
             <Text h4 style={styles.subtitle}>Regisztráció</Text>
 
             <Input
                 placeholder="Teljes név"
                 value={name}
                 onChangeText={setName}
-                leftIcon={{ type: 'ionicon', name: 'person-outline' }}
+                leftIcon={{ type: 'material', name: 'person' }}
+                containerStyle={styles.input}
             />
 
             <Input
@@ -63,7 +64,8 @@ const RegisterScreen = () => {
                 onChangeText={setEmail}
                 autoCapitalize="none"
                 keyboardType="email-address"
-                leftIcon={{ type: 'ionicon', name: 'mail-outline' }}
+                leftIcon={{ type: 'material', name: 'email' }}
+                containerStyle={styles.input}
             />
 
             <Input
@@ -71,7 +73,8 @@ const RegisterScreen = () => {
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry
-                leftIcon={{ type: 'ionicon', name: 'lock-closed-outline' }}
+                leftIcon={{ type: 'material', name: 'lock' }}
+                containerStyle={styles.input}
             />
 
             <Input
@@ -79,7 +82,8 @@ const RegisterScreen = () => {
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
                 secureTextEntry
-                leftIcon={{ type: 'ionicon', name: 'lock-closed-outline' }}
+                leftIcon={{ type: 'material', name: 'lock' }}
+                containerStyle={styles.input}
             />
 
             <Button
@@ -94,7 +98,7 @@ const RegisterScreen = () => {
                 type="clear"
                 onPress={() => navigation.navigate('Login')}
             />
-        </SafeAreaView>
+        </View>
     );
 };
 
@@ -114,6 +118,9 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         marginBottom: 30,
         color: '#666',
+    },
+    input: {
+        marginBottom: 10,
     },
     buttonContainer: {
         marginTop: 20,
